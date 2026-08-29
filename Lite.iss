@@ -1,13 +1,13 @@
 [Setup]
-AppId={{B6E1B1B0-1A11-4D2E-9C1A-A1A1A1A10002}
-AppName=Notepad Standard
+AppId={{B6E1B1B0-1A11-4D2E-9C1A-A1A1A1A10001}
+AppName=Notepad Lite
 AppVersion=1.0
 AppPublisher=Fritz
-DefaultDirName={autopf}\NotepadStandard
-DefaultGroupName=Notepad Standard
+DefaultDirName={autopf}\NotepadLite
+DefaultGroupName=Notepad Lite
 DisableProgramGroupPage=yes
 OutputDir=dist-installers
-OutputBaseFilename=NotepadStandard-Setup
+OutputBaseFilename=NotepadLite-Setup
 Compression=lzma
 SolidCompression=yes
 LicenseFile=LICENSE
@@ -21,12 +21,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
 [Files]
-Source: "dist\Notepad-Standard.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Notepad-Lite.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Notepad Standard"; Filename: "{app}\Notepad-Standard.exe"
-Name: "{group}\Uninstall Notepad Standard"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\Notepad Standard"; Filename: "{app}\Notepad-Standard.exe"; Tasks: desktopicon
+Name: "{group}\Notepad Lite"; Filename: "{app}\Notepad-Lite.exe"
+Name: "{group}\Uninstall Notepad Lite"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\Notepad Lite"; Filename: "{app}\Notepad-Lite.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Notepad-Standard.exe"; Description: "Launch Notepad Standard"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Notepad-Lite.exe"; Description: "Launch Notepad Lite"; Flags: nowait postinstall skipifsilent
