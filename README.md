@@ -4,9 +4,9 @@ Three tiers of a Windows Notepad clone, built with Python/Tkinter.
 
 | File | Size | Tier | What it is |
 |---|---|---|---|
-| `Notepad_Lite.py` | ~1.85 KB* | Lite | Full menu set, file ops, edit ops, font/wrap, unsaved-changes warning |
-| `Notepad_Standard.py` | ~16 KB | Standard | Every classic Windows Notepad feature |
-| `Notepad_Pro.py` | ~19 KB | Pro | Standard + tabs, recent files, autosave, syntax highlighting, themes |
+| `Notepad-Lite.py` | ~1.85 KB* | Lite | Full menu set, file ops, edit ops, font/wrap, unsaved-changes warning |
+| `Notepad-Standard.py` | ~16 KB | Standard | Every classic Windows Notepad feature |
+| `Notepad-Pro.py` | ~19 KB | Pro | Standard + tabs, recent files, autosave, syntax highlighting, themes |
 
 **License:** Apache License 2.0 for all three — see `LICENSE` in this repo, and the header comment in each file. Made by Fritz.
 
@@ -37,8 +37,7 @@ not just a bare `.exe`:
      Settings → Apps, not just a leftover file)
 
 **To get the installers:**
-1. Push this repo to GitHub (with the workflow, `LICENSE`, `installer/`
-   folder, and all three `.py` files at the repo root).
+1. Push this repo to GitHub with the layout below.
 2. Go to the **Actions** tab → wait for the run to finish (green check).
 3. Open that run → scroll to **Artifacts** → download `notepad-installers`.
 4. Inside: `NotepadLite-Setup.exe`, `NotepadStandard-Setup.exe`,
@@ -49,11 +48,11 @@ You can also trigger a build manually anytime from the Actions tab
 
 ---
 
-## 1. `Notepad_Lite.py` — the compact core
+## 1. `Notepad-Lite.py` — the compact core
 
 Every line earns its place — this is heavily condensed Python (short names,
 packed statements) to stay as small as possible while still shipping a real
-menu bar. It's not meant to be pretty to read; `Notepad_Standard.py` is the
+menu bar. It's not meant to be pretty to read; `Notepad-Standard.py` is the
 readable version.
 
 **Includes:**
@@ -73,7 +72,7 @@ handler function) is there for you to hook a real print call into later.
 
 ---
 
-## 2. `Notepad_Standard.py` — the full clone
+## 2. `Notepad-Standard.py` — the full clone
 
 Same look and feel, but with (almost) everything the real Windows Notepad has.
 
@@ -89,7 +88,7 @@ Same look and feel, but with (almost) everything the real Windows Notepad has.
 
 ---
 
-## 3. `Notepad_Pro.py` — jam-packed
+## 3. `Notepad-Pro.py` — jam-packed
 
 Everything in Standard, plus:
 
@@ -118,9 +117,9 @@ Requires `ttk` (bundled with standard Tkinter — no extra installs).
 If you just want to run a tier directly with Python instead of installing
 the compiled version:
 ```
-python Notepad_Lite.py
-python Notepad_Standard.py
-python Notepad_Pro.py
+python Notepad-Lite.py
+python Notepad-Standard.py
+python Notepad-Pro.py
 ```
 Requires Python 3 — tkinter comes bundled with the standard Windows/Mac
 installer. On Linux, if tkinter isn't already installed:
@@ -131,15 +130,15 @@ installer. On Linux, if tkinter isn't already installed:
 ## Repo layout
 
 ```
-Notepad_Lite.py
-Notepad_Standard.py
-Notepad_Pro.py
-LICENSE                         (Apache 2.0 — shown in the installer wizard)
+Notepad-Lite.py
+Notepad-Standard.py
+Notepad-Pro.py
+LICENSE                          (Apache 2.0 — shown in the installer wizard)
 installer/
-  lite.iss                      (Inno Setup script for Lite)
-  standard.iss                  (Inno Setup script for Standard)
-  pro.iss                       (Inno Setup script for Pro)
-.github/workflows/build-exe.yml (builds + packages all three installers)
+  Lite.iss                       (Inno Setup script for Lite)
+  Standard.iss                   (Inno Setup script for Standard)
+  Pro.iss                        (Inno Setup script for Pro)
+.github/workflows/build-exe.yml  (builds + packages all three installers)
 ```
 
 ---
