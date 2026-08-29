@@ -4,8 +4,9 @@ Two versions of a Windows Notepad clone, built with Python/Tkinter.
 
 | File | Size | What it is |
 |---|---|---|
-| `notepad.py` | 1.85 KB | Core app — full menu set, file ops, edit ops, font/wrap, unsaved-changes warning |
-| `notepad_extended.py` | ~16 KB | Full version — every classic Notepad feature, Apache License 2.0 licensed |
+| `Notepad_Lite.py` | ~1.85 KB | Core app — full menu set, file ops, edit ops, font/wrap, unsaved-changes warning, Apache License 2.0 licensed |
+| `Notepad_Standard.py` | ~16 KB | Standard Version every — classic Notepad feature, Apache License 2.0 licensed |
+| `Notepad_Extended` | 	~19 KB  | Standard + tabs, recent files, autosave, syntax highlighting, themes, Apache License 2.0 licensed |
 
 ---
 
@@ -53,6 +54,17 @@ Same look and feel, but with (almost) everything the real Windows Notepad has.
 **Not included:** actual printer output (Print shows a placeholder dialog — hooking up a real printer driver is OS-specific and outside what a single script can do), spell check, encoding-format selection.
 
 **License:** Apache License 2.0 — see the header comment in the file. Made by Fritz.
+
+## 3. notepad_pro.py — Pro (jam-packed)
+
+Everything in Standard, plus:
+
+Multi-document tabs — open several files at once, Ctrl+W closes the current tab (with a save prompt if it has unsaved changes)
+Recent Files — File → Open Recent remembers your last 8 files across restarts (saved to ~/.notepadpro_config.json)
+Autosave — every 30 seconds, any modified tab with a file path gets backed up to <filename>.bak (your real file is only touched when you explicitly Save — this is a safety-net copy, not silent overwriting)
+Syntax highlighting + line numbers — a lightweight highlighter (keywords, strings, comments, numbers) covers common languages like Python, JS, and C-style code, with a line-number gutter that scrolls with the text
+Themes — Light, Dark, and Solarized, switchable from View → Theme; your choice is remembered for next time
+Everything from Standard: Find, Replace, Go To Line, Undo/Redo, Cut/Copy/Paste, Font picker, Word Wrap, unsaved-changes warnings
 
 **Run it:**
 ```
