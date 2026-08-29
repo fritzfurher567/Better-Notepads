@@ -1,4 +1,4 @@
-name: Build Notepad EXEs
+name: Build Notepad Installers
 
 on:
   push:
@@ -21,17 +21,29 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Build Lite
-        run: pyinstaller --onefile --windowed --name Notepad-Lite notepad.py
+      # --- Step 1: compile each script into a standalone .exe ---
+      - name: Build Lite exe
+        run: pyinstaller --onefile --windowed --name Notepad-Lite Notepad-Lite.py
 
-      - name: Build Standard
-        run: pyinstaller --onefile --windowed --name Notepad-Standard notepad_extended.py
+      - name: Build Standard exe
+        run: pyinstaller --onefile --windowed --name Notepad-Standard Notepad-Standard.py
 
-      - name: Build Pro
-        run: pyinstaller --onefile --windowed --name Notepad-Pro notepad_pro.py
+      - name: Build Pro exe
+        run: pyinstaller --onefile --windowed --name Notepad-Pro Notepad-Pro.py
 
-      - name: Upload EXEs
+      # --- Step 2: wrap each exe in a proper setup wizard installer ---
+      - name: Compile Lite installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Lite.iss'
+
+      - name: Compile Standard installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Standard.iss'
+
+      - name: Compile Pro installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Pro.iss'
+
+      # --- Step 3: upload the finished setup wizards ---
+      - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: notepad-exes
-          path: dist/*.exe
+          name: notepad-installers
+          path: dist-installers/*.exe
