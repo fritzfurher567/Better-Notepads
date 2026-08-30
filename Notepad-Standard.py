@@ -1,369 +1,529 @@
 """
-Notepad (Extended Edition)
----------------------------
-A feature-complete clone of the classic Windows Notepad, built with Python/Tkinter.
- 
-Apache Licence
-Copyright (c) 2026 Fritz
-Made by Fritz
+Notepad Pro
+------------
+The jam-packed tier: everything in the Standard edition, plus multi-document
+tabs, a recent-files list, autosave, syntax highlighting with line numbers,
+and switchable themes, with a modern dark UI by default.
+
+Copyright 2026 Fritz
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License. Full text: see LICENSE in this repo.
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, font as tkfont
-import datetime
+from tkinter import ttk, filedialog, messagebox, simpledialog, font as tkfont
 import os
+import re
+import json
 
-APP_NAME = "Notepad"
+APP_NAME = "Notepad Pro"
+CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".notepadpro_config.json")
+AUTOSAVE_INTERVAL_MS = 30000
+
+THEMES = {
+    "Light": dict(bg="#ffffff", fg="#000000", insert="#000000", select_bg="#3399ff",
+                  select_fg="#ffffff", linebg="#f0f0f0", linefg="#888888", menubg="#f0f0f0"),
+    "Dark": dict(bg="#1e1e1e", fg="#d4d4d4", insert="#ffffff", select_bg="#264f78",
+                 select_fg="#ffffff", linebg="#252526", linefg="#858585", menubg="#2d2d2d"),
+    "Solarized": dict(bg="#fdf6e3", fg="#657b83", insert="#657b83", select_bg="#eee8d5",
+                       select_fg="#657b83", linebg="#eee8d5", linefg="#93a1a1", menubg="#eee8d5"),
+}
+
+KEYWORDS = (r"\b(def|class|return|import|from|as|if|elif|else|for|while|try|except|"
+            r"finally|with|lambda|pass|break|continue|in|is|not|and|or|None|True|False|"
+            r"function|var|let|const|new|this|public|private|static|void|int|float|"
+            r"string|include|namespace|using)\b")
+STRING_RE = r"(\".*?\"|'.*?')"
+COMMENT_RE = r"(#.*$|//.*$)"
+NUMBER_RE = r"\b\d+(\.\d+)?\b"
 
 
-class Notepad:
-    def __init__(self, root):
-        self.root = root
-        self.file_path = None
-        self.word_wrap = tk.BooleanVar(value=True)
-        self.status_bar_on = tk.BooleanVar(value=True)
-        self.zoom = 100
-        self.find_last_index = "1.0"
+def load_config():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH) as fh:
+                return json.load(fh)
+        except Exception:
+            pass
+    return {"recent": [], "theme": "Light"}
 
-        self.root.title(f"Untitled - {APP_NAME}")
-        self.root.geometry("800x600")
 
-        # ---- Text widget (with scrollbars, like real Notepad) ----
-        container = tk.Frame(self.root)
-        container.pack(fill="both", expand=True)
+def save_config(cfg):
+    try:
+        with open(CONFIG_PATH, "w") as fh:
+            json.dump(cfg, fh)
+    except Exception:
+        pass
 
-        self.text = tk.Text(container, undo=True, wrap="word",
-                             font=("Consolas", 11), bd=0, padx=4, pady=2)
-        yscroll = tk.Scrollbar(container, command=self.text.yview)
-        self.xscroll = tk.Scrollbar(self.root, orient="horizontal", command=self.text.xview)
-        self.text.config(yscrollcommand=yscroll.set, xscrollcommand=self.xscroll.set)
 
-        self.text.grid(row=0, column=0, sticky="nsew")
-        yscroll.grid(row=0, column=1, sticky="ns")
-        container.rowconfigure(0, weight=1)
-        container.columnconfigure(0, weight=1)
+class EditorTab(ttk.Frame):
+    def __init__(self, master, app, path=None):
+        super().__init__(master)
+        self.app = app
+        self.path = path
+        self._highlight_job = None
 
-        # ---- Status bar ----
-        self.status = tk.Label(self.root, text="Ln 1, Col 1", anchor="e", bd=1, relief="sunken")
-        self.status.pack(fill="x", side="bottom")
+        self.linenumbers = tk.Canvas(self, width=44, highlightthickness=0)
+        self.linenumbers.pack(side="left", fill="y")
 
-        self.text.bind("<<Modified>>", self.on_modified)
-        self.text.bind("<KeyRelease>", self.update_status)
-        self.text.bind("<ButtonRelease>", self.update_status)
+        yscroll = tk.Scrollbar(self)
+        yscroll.pack(side="right", fill="y")
 
-        self.build_menu()
-        self.bind_shortcuts()
-        self.new_file(force=True)
+        self.text = tk.Text(self, wrap="none", undo=True, font=("Consolas", 11),
+                             yscrollcommand=self._on_scroll, bd=0, padx=4)
+        self.text.pack(side="left", fill="both", expand=True)
+        yscroll.config(command=self._yview)
 
-        self.root.protocol("WM_DELETE_WINDOW", self.exit_app)
+        self.text.bind("<KeyRelease>", self._on_key)
+        self.text.bind("<Configure>", lambda e: self.update_linenumbers())
 
-    # ================= MENU =================
-    def build_menu(self):
-        menubar = tk.Menu(self.root)
+        self.update_linenumbers()
+        if path:
+            self.load_file(path)
 
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="New", accelerator="Ctrl+N", command=self.new_file)
-        file_menu.add_command(label="New Window", accelerator="Ctrl+Shift+N", command=self.new_window)
-        file_menu.add_command(label="Open...", accelerator="Ctrl+O", command=self.open_file)
-        file_menu.add_command(label="Save", accelerator="Ctrl+S", command=self.save_file)
-        file_menu.add_command(label="Save As...", accelerator="Ctrl+Shift+S", command=self.save_as_file)
-        file_menu.add_separator()
-        file_menu.add_command(label="Page Setup...", command=self.page_setup)
-        file_menu.add_command(label="Print...", accelerator="Ctrl+P", command=self.print_file)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.exit_app)
-        menubar.add_cascade(label="File", menu=file_menu)
+    def _yview(self, *args):
+        self.text.yview(*args)
+        self.update_linenumbers()
 
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        edit_menu.add_command(label="Undo", accelerator="Ctrl+Z", command=self.undo)
-        edit_menu.add_command(label="Redo", accelerator="Ctrl+Y", command=self.redo)
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Cut", accelerator="Ctrl+X", command=lambda: self.text.event_generate("<<Cut>>"))
-        edit_menu.add_command(label="Copy", accelerator="Ctrl+C", command=lambda: self.text.event_generate("<<Copy>>"))
-        edit_menu.add_command(label="Paste", accelerator="Ctrl+V", command=lambda: self.text.event_generate("<<Paste>>"))
-        edit_menu.add_command(label="Delete", accelerator="Del", command=self.delete_selection)
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Find...", accelerator="Ctrl+F", command=self.open_find)
-        edit_menu.add_command(label="Find Next", accelerator="F3", command=self.find_next)
-        edit_menu.add_command(label="Replace...", accelerator="Ctrl+H", command=self.open_replace)
-        edit_menu.add_command(label="Go To...", accelerator="Ctrl+G", command=self.go_to_line)
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Select All", accelerator="Ctrl+A", command=self.select_all)
-        edit_menu.add_command(label="Time/Date", accelerator="F5", command=self.insert_time_date)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
+    def _on_scroll(self, *args):
+        self.app.root.after_idle(self.update_linenumbers)
 
-        format_menu = tk.Menu(menubar, tearoff=0)
-        format_menu.add_checkbutton(label="Word Wrap", variable=self.word_wrap, command=self.toggle_wrap)
-        format_menu.add_command(label="Font...", command=self.choose_font)
-        menubar.add_cascade(label="Format", menu=format_menu)
+    def update_linenumbers(self):
+        self.linenumbers.delete("all")
+        i = self.text.index("@0,0")
+        th = self.app.theme()
+        while True:
+            dline = self.text.dlineinfo(i)
+            if dline is None:
+                break
+            y = dline[1]
+            linenum = str(i).split(".")[0]
+            self.linenumbers.create_text(4, y, anchor="nw", text=linenum,
+                                          fill=th["linefg"], font=("Consolas", 9))
+            i = self.text.index(f"{i}+1line")
 
-        view_menu = tk.Menu(menubar, tearoff=0)
-        zoom_menu = tk.Menu(view_menu, tearoff=0)
-        zoom_menu.add_command(label="Zoom In", accelerator="Ctrl+=", command=self.zoom_in)
-        zoom_menu.add_command(label="Zoom Out", accelerator="Ctrl+-", command=self.zoom_out)
-        zoom_menu.add_command(label="Restore Default Zoom", accelerator="Ctrl+0", command=self.zoom_reset)
-        view_menu.add_cascade(label="Zoom", menu=zoom_menu)
-        view_menu.add_checkbutton(label="Status Bar", variable=self.status_bar_on, command=self.toggle_status_bar)
-        menubar.add_cascade(label="View", menu=view_menu)
+    def _on_key(self, event=None):
+        self.app.update_title()
+        if self._highlight_job:
+            self.after_cancel(self._highlight_job)
+        self._highlight_job = self.after(300, self.highlight)
+        self.update_linenumbers()
 
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="About Notepad", command=self.show_about)
-        menubar.add_cascade(label="Help", menu=help_menu)
+    def is_modified(self):
+        return self.text.edit_modified()
 
-        self.root.config(menu=menubar)
+    def highlight(self):
+        content = self.text.get("1.0", "end-1c")
+        for tag in ("kw", "str", "cmt", "num"):
+            self.text.tag_remove(tag, "1.0", "end")
+        for m in re.finditer(KEYWORDS, content):
+            self._tag_range("kw", m.start(), m.end())
+        for m in re.finditer(STRING_RE, content):
+            self._tag_range("str", m.start(), m.end())
+        for m in re.finditer(COMMENT_RE, content, re.MULTILINE):
+            self._tag_range("cmt", m.start(), m.end())
+        for m in re.finditer(NUMBER_RE, content):
+            self._tag_range("num", m.start(), m.end())
 
-    def bind_shortcuts(self):
-        self.root.bind("<Control-n>", lambda e: self.new_file())
-        self.root.bind("<Control-N>", lambda e: self.new_window())
-        self.root.bind("<Control-o>", lambda e: self.open_file())
-        self.root.bind("<Control-s>", lambda e: self.save_file())
-        self.root.bind("<Control-S>", lambda e: self.save_as_file())
-        self.root.bind("<Control-p>", lambda e: self.print_file())
-        self.root.bind("<Control-f>", lambda e: self.open_find())
-        self.root.bind("<F3>", lambda e: self.find_next())
-        self.root.bind("<Control-h>", lambda e: self.open_replace())
-        self.root.bind("<Control-g>", lambda e: self.go_to_line())
-        self.root.bind("<Control-a>", lambda e: self.select_all())
-        self.root.bind("<F5>", lambda e: self.insert_time_date())
-        self.root.bind("<Control-equal>", lambda e: self.zoom_in())
-        self.root.bind("<Control-minus>", lambda e: self.zoom_out())
-        self.root.bind("<Control-0>", lambda e: self.zoom_reset())
+    def _tag_range(self, tag, start, end):
+        self.text.tag_add(tag, f"1.0+{start}c", f"1.0+{end}c")
 
-    # ================= FILE =================
-    def confirm_discard(self):
-        if self.text.edit_modified():
-            res = messagebox.askyesnocancel(APP_NAME, "Do you want to save changes?")
-            if res is None:
-                return False
-            if res:
-                self.save_file()
-        return True
+    def apply_theme(self, th):
+        self.text.config(bg=th["bg"], fg=th["fg"], insertbackground=th["insert"],
+                          selectbackground=th["select_bg"], selectforeground=th["select_fg"])
+        self.linenumbers.config(bg=th["linebg"])
+        self.text.tag_config("kw", foreground="#c586c0")
+        self.text.tag_config("str", foreground="#ce9178")
+        self.text.tag_config("cmt", foreground="#6a9955")
+        self.text.tag_config("num", foreground="#b5cea8")
+        self.update_linenumbers()
 
-    def new_file(self, force=False):
-        if not force and not self.confirm_discard():
-            return
-        self.text.delete("1.0", tk.END)
-        self.file_path = None
-        self.root.title(f"Untitled - {APP_NAME}")
-        self.text.edit_modified(False)
-        self.update_status()
-
-    def new_window(self):
-        os.system(f'python "{os.path.abspath(__file__)}" &' if os.name != "nt"
-                   else f'start python "{os.path.abspath(__file__)}"')
-
-    def open_file(self):
-        if not self.confirm_discard():
-            return
-        path = filedialog.askopenfilename(defaultextension=".txt",
-                                           filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
-        if not path:
-            return
+    def load_file(self, path):
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as fh:
                 content = fh.read()
         except Exception as e:
             messagebox.showerror(APP_NAME, f"Could not open file:\n{e}")
             return
-        self.text.delete("1.0", tk.END)
+        self.text.delete("1.0", "end")
         self.text.insert("1.0", content)
-        self.file_path = path
-        self.root.title(f"{os.path.basename(path)} - {APP_NAME}")
+        self.path = path
         self.text.edit_modified(False)
-        self.update_status()
+        self.highlight()
+        self.update_linenumbers()
 
-    def save_file(self):
-        if self.file_path:
-            self._write(self.file_path)
+    def save(self, path=None):
+        p = path or self.path
+        if not p:
+            return False
+        try:
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write(self.text.get("1.0", "end-1c"))
+        except Exception as e:
+            messagebox.showerror(APP_NAME, f"Could not save file:\n{e}")
+            return False
+        self.path = p
+        self.text.edit_modified(False)
+        return True
+
+    def autosave(self):
+        if self.path and self.is_modified():
+            try:
+                with open(self.path + ".bak", "w", encoding="utf-8") as fh:
+                    fh.write(self.text.get("1.0", "end-1c"))
+            except Exception:
+                pass
+
+    def display_name(self):
+        base = os.path.basename(self.path) if self.path else "Untitled"
+        return ("*" if self.is_modified() else "") + base
+
+
+class NotepadPro:
+    def __init__(self, root):
+        self.root = root
+        self.root.title(APP_NAME)
+        self.root.geometry("1000x700")
+
+        self.cfg = load_config()
+        self.theme_name = self.cfg.get("theme", "Dark")
+
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TNotebook", background="#1e1e1e", borderwidth=0, tabmargins=[2, 4, 0, 0])
+        style.configure("TNotebook.Tab", background="#2d2d2d", foreground="#cccccc",
+                         padding=[14, 6], borderwidth=0, font=("Segoe UI", 9))
+        style.map("TNotebook.Tab",
+                   background=[("selected", "#1e1e1e")],
+                   foreground=[("selected", "#ffffff")])
+
+        self.root.configure(bg="#1e1e1e")
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(fill="both", expand=True, padx=0, pady=0)
+        self.notebook.bind("<<NotebookTabChanged>>", lambda e: self.update_title())
+
+        self.status = tk.Label(root, text="Ln 1, Col 1", anchor="e", bd=0, relief="flat",
+                                font=("Segoe UI", 9), padx=10, pady=3,
+                                bg="#007acc", fg="#ffffff")
+        self.status.pack(fill="x", side="bottom")
+
+        self.build_menu()
+        self.bind_shortcuts()
+        self.new_tab()
+        self.apply_theme(self.theme_name)
+
+        self.root.protocol("WM_DELETE_WINDOW", self.exit_app)
+        self.root.after(AUTOSAVE_INTERVAL_MS, self.autosave_all)
+        self.root.after(200, self.update_status_loop)
+
+    # ---- tabs ----
+    def current_tab(self):
+        sel = self.notebook.select()
+        return self.notebook.nametowidget(sel) if sel else None
+
+    def new_tab(self, path=None):
+        tab = EditorTab(self.notebook, self, path)
+        self.notebook.add(tab, text=tab.display_name())
+        self.notebook.select(tab)
+        tab.apply_theme(self.theme())
+        self.update_title()
+        return tab
+
+    def close_tab(self, tab=None):
+        tab = tab or self.current_tab()
+        if not tab:
+            return
+        if tab.is_modified():
+            res = messagebox.askyesnocancel(APP_NAME, f"Save changes to {tab.display_name().lstrip('*')}?")
+            if res is None:
+                return
+            if res:
+                self.save_file(tab)
+        self.notebook.forget(tab)
+        if not self.notebook.tabs():
+            self.new_tab()
+        self.update_title()
+
+    # ---- file ops ----
+    def open_file(self):
+        path = filedialog.askopenfilename(filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
+        if not path:
+            return
+        self.new_tab(path)
+        self.add_recent(path)
+
+    def save_file(self, tab=None):
+        tab = tab or self.current_tab()
+        if not tab:
+            return
+        if tab.path:
+            if tab.save():
+                self.update_title()
         else:
-            self.save_as_file()
+            self.save_file_as(tab)
 
-    def save_as_file(self):
+    def save_file_as(self, tab=None):
+        tab = tab or self.current_tab()
+        if not tab:
+            return
         path = filedialog.asksaveasfilename(defaultextension=".txt",
                                              filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
         if not path:
             return
-        self._write(path)
-        self.file_path = path
-        self.root.title(f"{os.path.basename(path)} - {APP_NAME}")
+        if tab.save(path):
+            idx = self.notebook.index(tab)
+            self.notebook.tab(idx, text=tab.display_name())
+            self.add_recent(path)
+            self.update_title()
 
-    def _write(self, path):
-        try:
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(self.text.get("1.0", "end-1c"))
-            self.text.edit_modified(False)
-        except Exception as e:
-            messagebox.showerror(APP_NAME, f"Could not save file:\n{e}")
+    def add_recent(self, path):
+        recent = self.cfg.setdefault("recent", [])
+        if path in recent:
+            recent.remove(path)
+        recent.insert(0, path)
+        self.cfg["recent"] = recent[:8]
+        save_config(self.cfg)
+        self.rebuild_recent_menu()
 
-    def page_setup(self):
-        messagebox.showinfo("Page Setup", "Margins: 0.75\" all sides\nPaper: Letter\nOrientation: Portrait")
+    def rebuild_recent_menu(self):
+        self.recent_menu.delete(0, "end")
+        recent = self.cfg.get("recent", [])
+        if not recent:
+            self.recent_menu.add_command(label="(empty)", state="disabled")
+        for p in recent:
+            self.recent_menu.add_command(label=os.path.basename(p), command=lambda p=p: self.new_tab(p))
 
-    def print_file(self):
-        messagebox.showinfo("Print", "Printing is not available in this build.\nConnect a printer via your OS print dialog to enable this feature.")
+    def autosave_all(self):
+        for tab_id in self.notebook.tabs():
+            self.notebook.nametowidget(tab_id).autosave()
+        self.root.after(AUTOSAVE_INTERVAL_MS, self.autosave_all)
 
-    def exit_app(self):
-        if self.confirm_discard():
-            self.root.destroy()
+    # ---- menu ----
+    def build_menu(self):
+        menubar = tk.Menu(self.root)
 
-    # ================= EDIT =================
-    def undo(self):
-        try:
-            self.text.edit_undo()
-        except tk.TclError:
-            pass
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="New Tab", accelerator="Ctrl+N", command=lambda: self.new_tab())
+        file_menu.add_command(label="Open...", accelerator="Ctrl+O", command=self.open_file)
+        self.recent_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Open Recent", menu=self.recent_menu)
+        file_menu.add_command(label="Save", accelerator="Ctrl+S", command=lambda: self.save_file())
+        file_menu.add_command(label="Save As...", accelerator="Ctrl+Shift+S", command=lambda: self.save_file_as())
+        file_menu.add_separator()
+        file_menu.add_command(label="Close Tab", accelerator="Ctrl+W", command=lambda: self.close_tab())
+        file_menu.add_command(label="Exit", command=self.exit_app)
+        menubar.add_cascade(label="File", menu=file_menu)
 
-    def redo(self):
-        try:
-            self.text.edit_redo()
-        except tk.TclError:
-            pass
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu.add_command(label="Undo", accelerator="Ctrl+Z", command=self._undo)
+        edit_menu.add_command(label="Redo", accelerator="Ctrl+Y", command=self._redo)
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Cut", command=lambda: self._ev("<<Cut>>"))
+        edit_menu.add_command(label="Copy", command=lambda: self._ev("<<Copy>>"))
+        edit_menu.add_command(label="Paste", command=lambda: self._ev("<<Paste>>"))
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Find...", accelerator="Ctrl+F", command=self.find_dialog)
+        edit_menu.add_command(label="Replace...", accelerator="Ctrl+H", command=self.replace_dialog)
+        edit_menu.add_command(label="Go To Line...", accelerator="Ctrl+G", command=self.goto_line)
+        edit_menu.add_command(label="Select All", accelerator="Ctrl+A", command=self.select_all)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
 
-    def delete_selection(self):
-        try:
-            self.text.delete("sel.first", "sel.last")
-        except tk.TclError:
-            pass
+        format_menu = tk.Menu(menubar, tearoff=0)
+        self.wrap_var = tk.BooleanVar(value=False)
+        format_menu.add_checkbutton(label="Word Wrap", variable=self.wrap_var, command=self.toggle_wrap)
+        format_menu.add_command(label="Font...", command=self.choose_font)
+        menubar.add_cascade(label="Format", menu=format_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=0)
+        theme_menu = tk.Menu(view_menu, tearoff=0)
+        self.theme_var = tk.StringVar(value=self.theme_name)
+        for name in THEMES:
+            theme_menu.add_radiobutton(label=name, variable=self.theme_var, value=name,
+                                        command=lambda n=name: self.apply_theme(n))
+        view_menu.add_cascade(label="Theme", menu=theme_menu)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="About", command=self.show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+        self.root.config(menu=menubar)
+        self.rebuild_recent_menu()
+
+    def bind_shortcuts(self):
+        self.root.bind("<Control-n>", lambda e: self.new_tab())
+        self.root.bind("<Control-o>", lambda e: self.open_file())
+        self.root.bind("<Control-s>", lambda e: self.save_file())
+        self.root.bind("<Control-S>", lambda e: self.save_file_as())
+        self.root.bind("<Control-w>", lambda e: self.close_tab())
+        self.root.bind("<Control-f>", lambda e: self.find_dialog())
+        self.root.bind("<Control-h>", lambda e: self.replace_dialog())
+        self.root.bind("<Control-g>", lambda e: self.goto_line())
+        self.root.bind("<Control-a>", lambda e: self.select_all())
+
+    # ---- edit helpers ----
+    def _ev(self, name):
+        tab = self.current_tab()
+        if tab:
+            tab.text.event_generate(name)
+
+    def _undo(self):
+        tab = self.current_tab()
+        if tab:
+            try:
+                tab.text.edit_undo()
+            except tk.TclError:
+                pass
+
+    def _redo(self):
+        tab = self.current_tab()
+        if tab:
+            try:
+                tab.text.edit_redo()
+            except tk.TclError:
+                pass
 
     def select_all(self):
-        self.text.tag_add("sel", "1.0", "end-1c")
+        tab = self.current_tab()
+        if tab:
+            tab.text.tag_add("sel", "1.0", "end-1c")
         return "break"
 
-    def insert_time_date(self):
-        self.text.insert(tk.INSERT, datetime.datetime.now().strftime("%I:%M %p %m/%d/%Y"))
-
-    def open_find(self):
+    def find_dialog(self):
+        tab = self.current_tab()
+        if not tab:
+            return
         term = simpledialog.askstring("Find", "Find what:")
-        if term:
-            self.find_term = term
-            self.find_last_index = "1.0"
-            self.find_next()
-
-    def find_next(self):
-        term = getattr(self, "find_term", None)
         if not term:
-            return self.open_find()
-        self.text.tag_remove("found", "1.0", tk.END)
-        pos = self.text.search(term, self.find_last_index, stopindex=tk.END)
-        if not pos:
-            pos = self.text.search(term, "1.0", stopindex=tk.END)
-            if not pos:
-                messagebox.showinfo(APP_NAME, f'Cannot find "{term}"')
-                return
-        end = f"{pos}+{len(term)}c"
-        self.text.tag_add("found", pos, end)
-        self.text.tag_config("found", background="#3399ff", foreground="white")
-        self.text.mark_set(tk.INSERT, end)
-        self.text.see(pos)
-        self.find_last_index = end
+            return
+        tab.text.tag_remove("found", "1.0", "end")
+        pos = tab.text.search(term, "1.0", stopindex="end")
+        if pos:
+            end = f"{pos}+{len(term)}c"
+            tab.text.tag_add("found", pos, end)
+            tab.text.tag_config("found", background="#3399ff", foreground="white")
+            tab.text.see(pos)
+        else:
+            messagebox.showinfo(APP_NAME, f'Cannot find "{term}"')
 
-    def open_replace(self):
-        win = tk.Toplevel(self.root)
-        win.title("Replace")
-        win.resizable(False, False)
-        tk.Label(win, text="Find what:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        find_e = tk.Entry(win, width=28)
-        find_e.grid(row=0, column=1, padx=5, pady=5)
-        tk.Label(win, text="Replace with:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        rep_e = tk.Entry(win, width=28)
-        rep_e.grid(row=1, column=1, padx=5, pady=5)
+    def replace_dialog(self):
+        tab = self.current_tab()
+        if not tab:
+            return
+        find = simpledialog.askstring("Replace", "Find:")
+        if not find:
+            return
+        repl = simpledialog.askstring("Replace", "Replace with:") or ""
+        content = tab.text.get("1.0", "end-1c")
+        count = content.count(find)
+        content = content.replace(find, repl)
+        tab.text.delete("1.0", "end")
+        tab.text.insert("1.0", content)
+        tab.highlight()
+        messagebox.showinfo(APP_NAME, f"Replaced {count} occurrence(s).")
 
-        def replace_all():
-            content = self.text.get("1.0", "end-1c")
-            count = content.count(find_e.get()) if find_e.get() else 0
-            if find_e.get():
-                content = content.replace(find_e.get(), rep_e.get())
-                self.text.delete("1.0", tk.END)
-                self.text.insert("1.0", content)
-            messagebox.showinfo(APP_NAME, f"Replaced {count} occurrence(s).")
-
-        tk.Button(win, text="Replace All", width=14, command=replace_all).grid(row=2, column=0, columnspan=2, pady=8)
-
-    def go_to_line(self):
+    def goto_line(self):
+        tab = self.current_tab()
+        if not tab:
+            return
         line = simpledialog.askinteger("Go To Line", "Line number:")
         if line:
-            self.text.mark_set(tk.INSERT, f"{line}.0")
-            self.text.see(f"{line}.0")
-            self.update_status()
+            tab.text.mark_set("insert", f"{line}.0")
+            tab.text.see(f"{line}.0")
 
-    # ================= FORMAT =================
+    # ---- format ----
     def toggle_wrap(self):
-        if self.word_wrap.get():
-            self.text.config(wrap="word")
-            self.xscroll.pack_forget()
-        else:
-            self.text.config(wrap="none")
-            self.xscroll.pack(fill="x", side="bottom", before=self.status)
+        wrap = "word" if self.wrap_var.get() else "none"
+        for tab_id in self.notebook.tabs():
+            self.notebook.nametowidget(tab_id).text.config(wrap=wrap)
 
     def choose_font(self):
         win = tk.Toplevel(self.root)
         win.title("Font")
-        win.resizable(False, False)
-        families = ["Consolas", "Arial", "Courier New", "Segoe UI", "Times New Roman", "Verdana"]
-        cur = tkfont.Font(font=self.text["font"])
-
-        tk.Label(win, text="Font:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        win.configure(bg="#1e1e1e")
+        families = ["Cascadia Code", "Consolas", "Arial", "Courier New", "Segoe UI", "Times New Roman"]
+        tab = self.current_tab()
+        cur = tkfont.Font(font=tab.text["font"]) if tab else tkfont.Font(family="Consolas", size=11)
         fam_var = tk.StringVar(value=cur.actual("family"))
-        tk.OptionMenu(win, fam_var, *families).grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Label(win, text="Size:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         size_var = tk.IntVar(value=cur.actual("size"))
-        tk.Spinbox(win, from_=8, to=72, textvariable=size_var, width=5).grid(row=1, column=1, padx=5, pady=5, sticky="w")
+        tk.Label(win, text="Font:", bg="#1e1e1e", fg="#d4d4d4").grid(row=0, column=0, padx=5, pady=5)
+        tk.OptionMenu(win, fam_var, *families).grid(row=0, column=1)
+        tk.Label(win, text="Size:", bg="#1e1e1e", fg="#d4d4d4").grid(row=1, column=0, padx=5, pady=5)
+        tk.Spinbox(win, from_=8, to=48, textvariable=size_var, width=5,
+                   bg="#2d2d2d", fg="#d4d4d4", relief="flat").grid(row=1, column=1)
 
         def apply_font():
-            self.text.config(font=(fam_var.get(), size_var.get()))
+            for tab_id in self.notebook.tabs():
+                self.notebook.nametowidget(tab_id).text.config(font=(fam_var.get(), size_var.get()))
             win.destroy()
 
-        tk.Button(win, text="OK", width=10, command=apply_font).grid(row=2, column=0, columnspan=2, pady=8)
+        tk.Button(win, text="OK", command=apply_font, bg="#007acc", fg="white",
+                  relief="flat").grid(row=2, column=0, columnspan=2, pady=8)
 
-    # ================= VIEW =================
-    def zoom_in(self):
-        self.zoom = min(500, self.zoom + 10)
-        self._apply_zoom()
+    # ---- theme ----
+    def theme(self):
+        return THEMES[self.theme_name]
 
-    def zoom_out(self):
-        self.zoom = max(10, self.zoom - 10)
-        self._apply_zoom()
+    def apply_theme(self, name):
+        self.theme_name = name
+        self.cfg["theme"] = name
+        save_config(self.cfg)
+        th = THEMES[name]
+        for tab_id in self.notebook.tabs():
+            self.notebook.nametowidget(tab_id).apply_theme(th)
+        # Status bar keeps its accent-blue look across all themes (VS Code style)
 
-    def zoom_reset(self):
-        self.zoom = 100
-        self._apply_zoom()
+    # ---- misc ----
+    def update_title(self):
+        tab = self.current_tab()
+        if tab:
+            idx = self.notebook.index(tab)
+            self.notebook.tab(idx, text=tab.display_name())
+            self.root.title(f"{tab.display_name()} - {APP_NAME}")
 
-    def _apply_zoom(self):
-        base = 11
-        size = max(1, int(base * self.zoom / 100))
-        cur = tkfont.Font(font=self.text["font"])
-        self.text.config(font=(cur.actual("family"), size))
+    def update_status_loop(self):
+        tab = self.current_tab()
+        if tab:
+            line, col = tab.text.index("insert").split(".")
+            self.status.config(text=f"Ln {line}, Col {int(col)+1}  |  {self.theme_name}")
+        self.root.after(200, self.update_status_loop)
 
-    def toggle_status_bar(self):
-        if self.status_bar_on.get():
-            self.status.pack(fill="x", side="bottom")
-        else:
-            self.status.pack_forget()
-
-    # ================= HELP =================
     def show_about(self):
-        messagebox.showinfo("About Notepad",
-                             f"{APP_NAME} (Extended Edition)\nMade by Fritz\nMIT License\n\n"
-                             "A feature-complete Notepad clone built with Python & Tkinter.")
+        messagebox.showinfo("About " + APP_NAME,
+                             f"{APP_NAME}\nMade by Fritz\nMIT License\n\n"
+                             "Tabs, recent files, autosave, syntax highlighting, "
+                             "line numbers, and theming, built on Python & Tkinter.")
 
-    # ================= STATUS =================
-    def on_modified(self, event=None):
-        title = self.root.title()
-        if self.text.edit_modified() and not title.startswith("*"):
-            self.root.title(f"*{title}")
-        self.update_status()
-
-    def update_status(self, event=None):
-        if not self.status_bar_on.get():
-            return
-        index = self.text.index(tk.INSERT)
-        line, col = index.split(".")
-        self.status.config(text=f"Ln {line}, Col {int(col) + 1}")
+    def exit_app(self):
+        for tab_id in list(self.notebook.tabs()):
+            tab = self.notebook.nametowidget(tab_id)
+            if tab.is_modified():
+                self.notebook.select(tab)
+                res = messagebox.askyesnocancel(APP_NAME, f"Save changes to {tab.display_name().lstrip('*')}?")
+                if res is None:
+                    return
+                if res:
+                    self.save_file(tab)
+        save_config(self.cfg)
+        self.root.destroy()
 
 
 def main():
     root = tk.Tk()
-    Notepad(root)
+    NotepadPro(root)
     root.mainloop()
 
 
