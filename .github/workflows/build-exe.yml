@@ -3,6 +3,7 @@ name: Build Notepad Installers
 on:
   push:
     branches: [ main ]
+    tags: [ "v*" ]
   workflow_dispatch:
 
 jobs:
@@ -21,7 +22,6 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      # --- Step 1: compile each script into a standalone .exe ---
       - name: Build Lite exe
         run: pyinstaller --onefile --windowed --name Notepad-Lite Notepad-Lite.py
 
@@ -31,19 +31,23 @@ jobs:
       - name: Build Pro exe
         run: pyinstaller --onefile --windowed --name Notepad-Pro Notepad-Pro.py
 
-      # --- Step 2: wrap each exe in a proper setup wizard installer ---
       - name: Compile Lite installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Lite.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Lite.iss'
 
       - name: Compile Standard installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Standard.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Standard.iss'
 
       - name: Compile Pro installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" Pro.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Pro.iss'
 
-      # --- Step 3: upload the finished setup wizards ---
-      - name: Upload installers
+      - name: Upload installers as artifact
         uses: actions/upload-artifact@v4
         with:
           name: notepad-installers
           path: dist-installers/*.exe
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-installers/*.exe
