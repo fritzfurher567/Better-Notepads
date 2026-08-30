@@ -36,15 +36,20 @@ not just a bare `.exe`:
    - A proper uninstaller registered in Windows (shows up in
      Settings → Apps, not just a leftover file)
 
-**To get the installers:**
-1. Push this repo to GitHub with the layout below.
-2. Go to the **Actions** tab → wait for the run to finish (green check).
-3. Open that run → scroll to **Artifacts** → download `notepad-installers`.
-4. Inside: `NotepadLite-Setup.exe`, `NotepadStandard-Setup.exe`,
-   `NotepadPro-Setup.exe` — each one a double-clickable setup wizard.
+**To get the installers, pick whichever applies:**
 
-You can also trigger a build manually anytime from the Actions tab
-(the "Run workflow" button) without pushing new code.
+**If a version has been released** (someone ran `git tag v1.0.0` and pushed it):
+1. Go to your repo's **Releases** tab (right sidebar on the repo homepage, or `github.com/yourname/yourrepo/releases`)
+2. Click the latest release
+3. Under **Assets**, click to download whichever file you want directly: `NotepadLite-Setup.exe`, `NotepadStandard-Setup.exe`, or `NotepadPro-Setup.exe`
+4. Done — no zip, no extra folders. Double-click the one you downloaded to install it.
+
+**If no release exists yet** (only plain pushes to `main` so far):
+1. Go to the **Actions** tab
+2. Click the most recent run with a green checkmark
+3. Scroll down to **Artifacts** → click `notepad-installers` to download a `.zip`
+4. Unzip it — inside are the same three `.exe` files
+5. Double-click whichever one you want to install
 
 ---
 
