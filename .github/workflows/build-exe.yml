@@ -33,19 +33,15 @@ jobs:
       - name: Build Pro exe
         run: pyinstaller --onefile --windowed --name Notepad-Pro Notepad-Pro.py
 
-      - name: Compile Lite installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Lite.iss'
+      # Compiles ONE installer that lets the person pick Lite / Standard / Pro
+      # (or a custom combination) during setup.
+      - name: Compile unified installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Setup.iss'
 
-      - name: Compile Standard installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Standard.iss'
-
-      - name: Compile Pro installer
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\Pro.iss'
-
-      - name: Upload installers as artifact
+      - name: Upload installer as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notepad-installers
+          name: notepad-installer
           path: dist-installers/*.exe
 
       - name: Publish GitHub Release
