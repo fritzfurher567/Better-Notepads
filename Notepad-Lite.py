@@ -1,10 +1,12 @@
-#Fritz Notepad - Apache
+#Notepad Lite - Apache 2.0 - by Fritz
 import tkinter as tk
 from tkinter import filedialog as fd,messagebox as mb,simpledialog as sd
 f=None
 S,E,D="1.0","end-1c",tk.END
-r=tk.Tk();r.title("Untitled")
-t=tk.Text(r,undo=1,wrap="word",font=("Consolas",11));t.pack(fill="both",expand=1)
+BG,FG,MB,MF,AB="#1e1e1e","#d4d4d4","#2d2d2d","#cccccc","#094771"
+r=tk.Tk();r.title("Untitled");r.configure(bg=BG)
+t=tk.Text(r,undo=1,wrap="word",font=("Consolas",11),bg=BG,fg=FG,insertbackground=FG,selectbackground="#264f78",selectforeground="white",relief="flat",highlightthickness=0,padx=8,pady=6)
+t.pack(fill="both",expand=1)
 def L(p):t.delete(S,D);t.insert(S,open(p).read())
 def T(p):r.title(p.split("/")[-1])
 def ak():
@@ -32,10 +34,11 @@ def wr():t.config(wrap="word" if wv.get() else "none")
 def ex():
  if ak():r.destroy()
 ev=lambda s:lambda:t.event_generate(s)
-m=tk.Menu(r);r.config(menu=m)
+mk=lambda p:tk.Menu(p,tearoff=0,bg=MB,fg=MF,activebackground=AB,activeforeground="white")
+m=mk(r);r.config(menu=m)
 ms=[]
 for nm in "File","Edit","Format","View","Help":
- mm=tk.Menu(m,tearoff=0);m.add_cascade(label=nm,menu=mm);ms.append(mm)
+ mm=mk(m);m.add_cascade(label=nm,menu=mm);ms.append(mm)
 fm,em,ftm,vm,hm=ms
 for l,c in[("New",n),("Open",o),("Save",sv),("SaveAs",sa),("Print",lambda:mb.showinfo("P","N/A")),("Exit",ex)]:fm.add_command(label=l,command=c)
 for l,c in[("Undo",t.edit_undo),("Cut",ev("<<Cut>>")),("Copy",ev("<<Copy>>")),("Paste",ev("<<Paste>>")),("Find",rp)]:em.add_command(label=l,command=c)
